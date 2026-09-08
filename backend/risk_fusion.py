@@ -61,33 +61,38 @@ class FusionResult:
 
 _EXPLANATION_TEMPLATES = {
     "SYN/UDP Flood": (
-        "Possible SYN/UDP Flood detected. The flow exhibits a very high SYN ratio, "
-        "extremely low inter-packet interval, and small uniform packet sizes — consistent "
-        "with a volumetric denial-of-service pattern."
+        "Traffic characteristics are consistent with a volumetric denial-of-service pattern. "
+        "The observed flow exhibits a very high SYN ratio, extremely low inter-packet interval, "
+        "and small uniform packet sizes, which may indicate a SYN or UDP flood attempt. "
+        "Further investigation is recommended."
     ),
     "DNS Tunneling": (
-        "Possible DNS Tunnelling detected. The flow shows high payload entropy and "
-        "above-average packet lengths for DNS traffic, suggesting encoded data is being "
-        "exfiltrated through DNS queries."
+        "Traffic characteristics are consistent with DNS-based data tunnelling and may warrant "
+        "investigation for possible data exfiltration. The flow shows high payload entropy and "
+        "above-average packet lengths for DNS traffic, suggesting encoded data may be present "
+        "in DNS query labels. This is a passive metadata-based indicator only."
     ),
     "C2 Beaconing": (
-        "Possible C2 Beaconing detected. The flow exhibits highly regular periodic "
-        "communication intervals with low inter-packet variance and small packet sizes — "
-        "consistent with an implant polling a command-and-control server."
+        "Periodic outbound timing is consistent with beacon-like command-and-control behaviour. "
+        "The flow exhibits highly regular communication intervals with low inter-packet variance "
+        "and small packet sizes, which may indicate periodic check-in traffic. "
+        "This is a passive indicator — intent cannot be confirmed from metadata alone."
     ),
     "Slow/Low-and-Slow": (
-        "Possible slow/low-and-slow behaviour detected. The flow persists over an unusually "
-        "long duration with very low packet rate, which may indicate evasive scanning, "
-        "slow exfiltration, or connection keep-alive probing."
+        "Flow characteristics are consistent with low-and-slow evasive behaviour. "
+        "The connection persisted over an unusually long duration with very low packet rate, "
+        "which may indicate evasive reconnaissance, slow exfiltration, or persistent keep-alive "
+        "probing. Further correlation with other signals is recommended."
     ),
     "Anomaly": (
-        "Anomalous traffic detected. The flow deviates significantly from the established "
-        "benign baseline across multiple statistical dimensions. The exact threat family "
-        "could not be confirmed by the supervised classifier."
+        "The flow deviates significantly from the established benign baseline across multiple "
+        "statistical dimensions, which may indicate anomalous or unusual traffic. "
+        "The supervised classifier was unable to confirm a specific threat family. "
+        "Manual investigation is recommended."
     ),
     "Benign": (
         "No significant threat indicators detected. Traffic statistics fall within normal "
-        "baselines for all detection pillars."
+        "baselines across all detection pillars."
     ),
 }
 

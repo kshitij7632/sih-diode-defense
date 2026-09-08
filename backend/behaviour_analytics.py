@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 
 @dataclass
 class BehaviourResult:
-    behaviour_score : float       # 0.0 = no anomalous behaviour, 1.0 = maximal
-    behaviour_type  : str         # 'C2 Beaconing' | 'DNS Tunnelling' | 'Slow/Low-and-Slow' | 'Benign'
-    evidence        : list[str]   = field(default_factory=list)
+    behaviour_type  : str
+    evidence        : list[str]
+    behaviour_score : float = 0.0
 
     def as_dict(self) -> dict:
         return {
@@ -256,24 +256,6 @@ class BehaviourAnalyticsEngine:
 
         score = min(1.0, score_pts / max_pts)
         return BehaviourResult("Slow/Low-and-Slow", evidence, score)
-
-
-# ── Dataclass field order fix ─────────────────────────────────────────────────
-# Python dataclass requires fields with defaults to come after fields without.
-# Redefine with correct order:
-
-@dataclass
-class BehaviourResult:  # noqa: F811
-    behaviour_type  : str
-    evidence        : list[str]
-    behaviour_score : float = 0.0
-
-    def as_dict(self) -> dict:
-        return {
-            "behaviour_score": round(self.behaviour_score, 4),
-            "behaviour_type" : self.behaviour_type,
-            "evidence"       : self.evidence,
-        }
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────

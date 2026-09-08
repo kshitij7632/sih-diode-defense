@@ -24,6 +24,7 @@ import os
 import time
 import uuid
 import logging
+import tempfile
 from collections import deque
 from datetime import datetime, timezone
 
@@ -32,7 +33,7 @@ import torch
 import torch.nn as nn
 import joblib
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -89,7 +90,8 @@ else:
     log.info("MONGO_URL not set — using in-memory alert storage.")
 
 # In-memory fallback (always maintained for stats)
-_mem_alerts : deque = deque(maxlen=500)
+_mem_alerts : deque = deque(maxlen=500)   # non-benign alerts for threat feed
+_mem_flows  : deque = deque(maxlen=1000)  # all flows (including benign) for explorer
 
 # ── Operational counters ──────────────────────────────────────────────────────
 _stats = {
@@ -299,7 +301,8 @@ async def analyze_flow(flow: IngestFlow):
         _stats["anomaly_count"] += 1
 
     # 7. Store alert
-    _mem_alerts.appendleft(alert)
+    _mem_flows.appendleft(alert)   # all flows → Flow Explorer
+    _mem_alerts.appendleft(alert)  # kept for backward compat (filters applied at read time)
     if _db_available and db is not None and fusion.dominant_threat != "Benign":
         try:
             db_doc = {k: v for k, v in alert.items() if k != "alert_id"}
@@ -376,4 +379,110 @@ async def health():
         "scaler_loaded" : True,
         "db_available"  : _db_available,
         "model_version" : MODEL_VERSION,
+    }
+
+
+# ── All flows endpoint (for Flow Explorer) ────────────────────────────────────
+@app.get("/api/v1/flows", summary="Retrieve recent flows (all, including benign)")
+async def get_flows(limit: int = 100):
+    """
+    Returns all recently analyzed flows including benign traffic.
+    Used by the Flow Explorer to let analysts inspect the full traffic picture.
+    """
+    return list(_mem_flows)[:limit]
+
+
+# ── PCAP upload endpoint ──────────────────────────────────────────────────────
+@app.post("/api/v1/analyze-pcap", summary="Upload and analyze a PCAP file")
+async def analyze_pcap_upload(file: UploadFile = File(...)):
+    """
+    Accept a .pcap file upload, extract flows using 5-tuple grouping,
+    run each flow through the full detection pipeline, and return results.
+
+    This is a synchronous endpoint suitable for small PCAP files (prototype use).
+    For large captures, use the CLI: python pcap_analyzer.py <file>
+    """
+    if not file.filename or not file.filename.lower().endswith(".pcap"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .pcap files are supported. Upload a valid packet capture file."
+        )
+
+    # Write upload to a temporary file
+    try:
+        content = await file.read()
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        with tempfile.NamedTemporaryFile(suffix=".pcap", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        log.info("PCAP upload: %s (%d bytes) → temp file %s", file.filename, len(content), tmp_path)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.error("Failed to save uploaded PCAP: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to save PCAP: {exc}")
+
+    # Import and run the PCAP analysis inline
+    try:
+        from pcap_analyzer import analyze_pcap_to_list
+        flows = analyze_pcap_to_list(tmp_path)
+    except ImportError:
+        # Fallback: pcap_analyzer module available but analyze_pcap_to_list not yet defined
+        # In that case scapy might not be installed — return a clear error
+        raise HTTPException(
+            status_code=503,
+            detail="PCAP analysis requires scapy. Install with: pip install scapy"
+        )
+    except Exception as exc:
+        log.error("PCAP analysis failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"PCAP analysis failed: {exc}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    if not flows:
+        return {"message": "No analyzable flows found in PCAP.", "results": [], "flow_count": 0}
+
+    # Run each flow through the detection pipeline
+    results = []
+    for feat in flows:
+        try:
+            # Validate required fields exist
+            flow_obj = IngestFlow(
+                source_ip        = feat.get("source_ip", "0.0.0.0"),
+                destination_ip   = feat.get("destination_ip", "0.0.0.0"),
+                source_port      = feat.get("source_port", 0),
+                destination_port = feat.get("destination_port", 0),
+                protocol         = feat.get("protocol", 0),
+                iat_mean         = feat.get("iat_mean", 0.0),
+                iat_std          = feat.get("iat_std", 0.0),
+                pkt_len_mean     = feat.get("pkt_len_mean", 0.0),
+                pkt_len_std      = feat.get("pkt_len_std", 0.0),
+                payload_entropy  = min(feat.get("payload_entropy", 0.0), 8.0),
+                syn_ratio        = min(feat.get("syn_ratio", 0.0), 1.0),
+                tcp_rst_ratio    = min(feat.get("tcp_rst_ratio", 0.0), 1.0),
+                tcp_fin_ratio    = min(feat.get("tcp_fin_ratio", 0.0), 1.0),
+                duration         = feat.get("duration", 0.0),
+                packet_count     = feat.get("packet_count", 0),
+                byte_count       = feat.get("byte_count", 0),
+                forward_pkts     = feat.get("forward_pkts", 0),
+                backward_pkts    = feat.get("backward_pkts", 0),
+                forward_bytes    = feat.get("forward_bytes", 0),
+                backward_bytes   = feat.get("backward_bytes", 0),
+            )
+            # Reuse the main analysis logic via internal call
+            result = await analyze_flow(flow_obj)
+            results.append(result)
+        except Exception as exc:
+            log.warning("Failed to analyze PCAP flow: %s", exc)
+
+    return {
+        "message"    : f"Analyzed {len(results)} flows from {file.filename}",
+        "flow_count" : len(results),
+        "results"    : results,
     }

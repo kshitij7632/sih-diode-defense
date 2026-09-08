@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
+import { Sidebar } from "./components/Sidebar";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,25 +20,32 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Passive Cyber Intelligence — SIH 26145",
+  title: "GeoGuards — Passive Cyber Intelligence",
   description:
-    "Unidirectional network threat detection prototype for Smart India Hackathon 2026, " +
-    "Problem Statement 26145. Passive monitoring only — no active response.",
-  keywords: ["NIDS", "cyber security", "unidirectional", "data diode", "SIH 26145"],
+    "GeoGuards: Passive, metadata-driven threat detection for unidirectional networks. " +
+    "SIH 2026 Problem Statement 26145. No active response — passive monitoring only.",
+  keywords: ["GeoGuards", "NIDS", "passive monitoring", "data diode", "SIH 26145", "cyber intelligence"],
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 antialiased">
-        {children}
+      <body
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "row",
+          background: "var(--gg-bg)",
+          color: "var(--gg-text)",
+        }}
+      >
+        <Sidebar />
+        <main style={{ flex: 1, minWidth: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          {children}
+        </main>
       </body>
     </html>
   );

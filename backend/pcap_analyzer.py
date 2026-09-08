@@ -292,6 +292,113 @@ def analyze_pcap(pcap_file_path: str, api_url: str) -> int:
     return submitted
 
 
+def analyze_pcap_to_list(pcap_file_path: str) -> list[dict]:
+    """
+    Parse a PCAP file, extract 5-tuple flows, and return feature dicts.
+    Does NOT post to the API — caller handles submission.
+    Used by the FastAPI /api/v1/analyze-pcap endpoint.
+
+    Returns list of feature dicts (one per completed flow).
+    """
+    log.info("Reading packet capture (list mode): %s", pcap_file_path)
+
+    try:
+        from scapy.all import rdpcap, IP, TCP, UDP
+        packets = rdpcap(pcap_file_path)
+    except ImportError:
+        log.error("scapy is not installed. Run: pip install scapy")
+        return []
+    except Exception as exc:
+        log.error("Failed to read PCAP: %s", exc)
+        return []
+
+    log.info("Loaded %d packets. Extracting flows...", len(packets))
+
+    active_flows: dict[tuple, dict] = {}
+    completed: list[dict] = []
+
+    for pkt in packets:
+        if IP not in pkt:
+            continue
+
+        src_ip    = pkt[IP].src
+        dst_ip    = pkt[IP].dst
+        proto     = pkt[IP].proto
+        pkt_time  = float(pkt.time)
+        pkt_len   = len(pkt)
+        payload_b = b""
+        flags_str = ""
+
+        src_port = dst_port = 0
+
+        if TCP in pkt:
+            src_port  = pkt[TCP].sport
+            dst_port  = pkt[TCP].dport
+            flags_str = str(pkt[TCP].flags)
+            if pkt[TCP].payload:
+                payload_b = bytes(pkt[TCP].payload)
+        elif UDP in pkt:
+            src_port  = pkt[UDP].sport
+            dst_port  = pkt[UDP].dport
+            if pkt[UDP].payload:
+                payload_b = bytes(pkt[UDP].payload)
+
+        flow_key     = (src_ip, dst_ip, src_port, dst_port, proto)
+        rev_flow_key = (dst_ip, src_ip, dst_port, src_port, proto)
+
+        stale_keys = [
+            k for k, v in active_flows.items()
+            if pkt_time - v["last_seen"] > FLOW_TIMEOUT_SECONDS
+        ]
+        for k in stale_keys:
+            feat = _extract_features(active_flows[k])
+            if feat:
+                completed.append(feat)
+            del active_flows[k]
+
+        if flow_key in active_flows:
+            fkey, direction = flow_key, "fwd"
+        elif rev_flow_key in active_flows:
+            fkey, direction = rev_flow_key, "bwd"
+        else:
+            fkey, direction = flow_key, "fwd"
+            active_flows[fkey]            = _make_flow()
+            active_flows[fkey]["src_ip"]   = src_ip
+            active_flows[fkey]["dst_ip"]   = dst_ip
+            active_flows[fkey]["src_port"] = src_port
+            active_flows[fkey]["dst_port"] = dst_port
+            active_flows[fkey]["protocol"] = proto
+
+        f = active_flows[fkey]
+        f["times"].append(pkt_time)
+        f["lengths"].append(pkt_len)
+        f["payloads"]  += payload_b
+        f["last_seen"]  = pkt_time
+
+        if direction == "fwd":
+            f["fwd_pkts"]  += 1
+            f["fwd_bytes"] += pkt_len
+        else:
+            f["bwd_pkts"]  += 1
+            f["bwd_bytes"] += pkt_len
+
+        if TCP in pkt:
+            if "S" in flags_str and "A" not in flags_str:
+                f["syn_count"] += 1
+            if "R" in flags_str:
+                f["rst_count"] += 1
+            if "F" in flags_str:
+                f["fin_count"] += 1
+
+    for flow_data in active_flows.values():
+        feat = _extract_features(flow_data)
+        if feat:
+            completed.append(feat)
+
+    log.info("Extracted %d flows from PCAP (list mode).", len(completed))
+    return completed
+
+
 # ── CLI entry point ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
