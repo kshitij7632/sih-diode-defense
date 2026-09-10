@@ -12,6 +12,7 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 5.0, syn_ratio: 0.03, tcp_rst_ratio: 0.01, tcp_fin_ratio: 0.05,
     duration: 2.0, packet_count: 40, byte_count: 24000,
     forward_pkts: 20, backward_pkts: 20, forward_bytes: 12000, backward_bytes: 12000,
+    analysis_mode: 'synthetic_demo',
   },
   syn_flood: {
     source_ip: '10.0.4.182', destination_ip: '10.0.0.1',
@@ -20,6 +21,7 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 0.15, syn_ratio: 0.99, tcp_rst_ratio: 0.0, tcp_fin_ratio: 0.0,
     duration: 0.5, packet_count: 800, byte_count: 51200,
     forward_pkts: 800, backward_pkts: 0, forward_bytes: 51200, backward_bytes: 0,
+    analysis_mode: 'synthetic_demo',
   },
   dns_tunnel: {
     source_ip: '192.168.10.45', destination_ip: '8.8.8.8',
@@ -28,6 +30,8 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 7.9, syn_ratio: 0.0, tcp_rst_ratio: 0.0, tcp_fin_ratio: 0.0,
     duration: 5.0, packet_count: 60, byte_count: 11400,
     forward_pkts: 30, backward_pkts: 30, forward_bytes: 5700, backward_bytes: 5700,
+    dns_query: 'exfiltratedchunk38472918.tunnel.victim.com',
+    analysis_mode: 'synthetic_demo',
   },
   c2_beacon: {
     source_ip: '172.16.0.88', destination_ip: '91.195.240.117',
@@ -36,6 +40,7 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 4.1, syn_ratio: 0.0, tcp_rst_ratio: 0.01, tcp_fin_ratio: 0.02,
     duration: 120.0, packet_count: 60, byte_count: 7500,
     forward_pkts: 30, backward_pkts: 30, forward_bytes: 3750, backward_bytes: 3750,
+    analysis_mode: 'synthetic_demo',
   },
 };
 
@@ -58,7 +63,7 @@ export function DemoControls({ onRefresh }: { onRefresh?: () => void }) {
     if (running) return;
     setRunning(true);
     setProgress(0);
-    setStatus(`Initializing injection of ${flowCount} flows…`);
+    setStatus(`Initializing synthetic simulation injection (${flowCount} flows)…`);
 
     const cycle =
       presetId === 'mixed'
@@ -75,21 +80,40 @@ export function DemoControls({ onRefresh }: { onRefresh?: () => void }) {
         await API.analyzeFlow(payload as Record<string, unknown>);
         ok++;
         setProgress(Math.round(((i + 1) / flowCount) * 100));
-        setStatus(`Injecting stream: ${i + 1}/${flowCount} flows processed by real model…`);
+        setStatus(`Injecting stream: ${i + 1}/${flowCount} flows evaluated by real backend…`);
       } catch {
         setStatus('Connection error — check backend API status.');
         break;
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
     }
 
-    setStatus(`✓ Complete: ${ok}/${flowCount} flows evaluated & stored in real time.`);
+    setStatus(`✓ Complete: ${ok}/${flowCount} synthetic demo flows evaluated & stored.`);
     setRunning(false);
     onRefresh?.();
   }, [running, selectedId, count, onRefresh]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Simulation Banner */}
+      <div style={{
+        padding: '10px 14px',
+        borderRadius: 'var(--gg-radius-sm)',
+        background: 'rgba(251, 191, 36, 0.08)',
+        border: '1px solid rgba(251, 191, 36, 0.25)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        fontSize: 11,
+        color: '#fbbf24'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Activity size={14} />
+          <span><strong>DEMO / SIMULATION MODE:</strong> Injects deterministic synthetic flow vectors into the live backend detection pipeline for testing.</span>
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>Analysis Mode: synthetic_demo</span>
+      </div>
+
       {/* Attack Presets Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         {ATTACK_PRESETS.map((preset) => {
@@ -178,7 +202,7 @@ export function DemoControls({ onRefresh }: { onRefresh?: () => void }) {
           {running ? (
             <>
               <RefreshCw size={15} className="animate-spin" />
-              <span>Injecting Stream ({progress}%)…</span>
+              <span>Evaluating Stream ({progress}%)…</span>
             </>
           ) : (
             <>

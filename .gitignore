@@ -16,9 +16,11 @@ node_modules/
 
 # Datasets & Raw Captures
 datasets/
+ml/artifacts/
 *.pcap
 *.7z
 *.csv
+*.npz
 
 # OS / Editor Files
 .DS_Store

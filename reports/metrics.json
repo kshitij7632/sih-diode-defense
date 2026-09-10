@@ -1,0 +1,170 @@
+{
+  "timestamp": "2026-09-10T13:06:38.180238",
+  "model_v1_baseline": {
+    "accuracy": 0.9721479958890031,
+    "macro_precision": 0.9400980428805493,
+    "macro_recall": 0.8912535878953178,
+    "macro_f1": 0.9112282581629059,
+    "weighted_f1": 0.9710439727194822,
+    "benign_fpr": 0.017777777777777778,
+    "threat_fnr": 0.03499043977055449,
+    "per_class": {
+      "Benign": {
+        "precision": 0.9602433195741907,
+        "recall": 0.9822222222222222,
+        "f1": 0.9711084257936944,
+        "support": 4500
+      },
+      "SYN/UDP Flood": {
+        "precision": 0.9903824647729814,
+        "recall": 0.984,
+        "f1": 0.9871809162858098,
+        "support": 4500
+      },
+      "DNS Tunneling": {
+        "precision": 0.981859410430839,
+        "recall": 0.9954022988505747,
+        "f1": 0.9885844748858448,
+        "support": 435
+      },
+      "C2 Beaconing": {
+        "precision": 0.827906976744186,
+        "recall": 0.6033898305084746,
+        "f1": 0.6980392156862745,
+        "support": 295
+      }
+    },
+    "confusion_matrix": [
+      [
+        4420,
+        36,
+        8,
+        36
+      ],
+      [
+        71,
+        4428,
+        0,
+        1
+      ],
+      [
+        2,
+        0,
+        433,
+        0
+      ],
+      [
+        110,
+        7,
+        0,
+        178
+      ]
+    ],
+    "latency": {
+      "avg_ms": 0.07409680099226534,
+      "p50_ms": 0.06539991591125727,
+      "p95_ms": 0.11674007400870319,
+      "p99_ms": 0.17713895183987913,
+      "min_ms": 0.04269997589290142,
+      "max_ms": 0.3955999854952097
+    }
+  },
+  "model_v2_expanded": {
+    "accuracy": 0.9900308324768756,
+    "macro_precision": 0.9843191238044346,
+    "macro_recall": 0.9344265536723164,
+    "macro_f1": 0.9559898640019503,
+    "weighted_f1": 0.9895119362611886,
+    "benign_fpr": 0.003111111111111111,
+    "threat_fnr": 0.01586998087954111,
+    "per_class": {
+      "Benign": {
+        "precision": 0.9818340993652878,
+        "recall": 0.9968888888888889,
+        "f1": 0.9893042231778586,
+        "support": 4500
+      },
+      "SYN/UDP Flood": {
+        "precision": 0.9991105181231933,
+        "recall": 0.9984444444444445,
+        "f1": 0.9987773702345226,
+        "support": 4500
+      },
+      "DNS Tunneling": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 435
+      },
+      "C2 Beaconing": {
+        "precision": 0.9563318777292577,
+        "recall": 0.7423728813559322,
+        "f1": 0.8358778625954199,
+        "support": 295
+      }
+    },
+    "confusion_matrix": [
+      [
+        4486,
+        4,
+        0,
+        10
+      ],
+      [
+        7,
+        4493,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        435,
+        0
+      ],
+      [
+        76,
+        0,
+        0,
+        219
+      ]
+    ],
+    "latency": {
+      "avg_ms": 0.11445839889347553,
+      "p50_ms": 0.09834999218583107,
+      "p95_ms": 0.21618001628667108,
+      "p99_ms": 0.3453339519910514,
+      "min_ms": 0.06230000872164965,
+      "max_ms": 0.5210000090301037
+    }
+  },
+  "dga_domain_model": {
+    "accuracy": 0.9206666666666666,
+    "precision": 0.9361349184406967,
+    "recall": 0.9029333333333334,
+    "f1": 0.9192344237817294,
+    "roc_auc": 0.9771548444444444
+  },
+  "external_validation": {
+    "zero_day_dns_tunnels": {
+      "dataset": "DNS-Tunnel-Datasets-main/unkownTunnel (Cobalt Strike, tcp-over-dns, ozymandns)",
+      "sample_count": 2267,
+      "threat_detection_rate": 0.9505955006616674,
+      "specific_tunnel_class_rate": 0.9505955006616674,
+      "verdict": "High zero-day tunnel generalization"
+    },
+    "reconnaissance_portscan": {
+      "dataset": "CIC-IDS2017 PortScan holdout",
+      "sample_count": 10000,
+      "classifier_threat_flag_rate": 0.507,
+      "isolation_forest_anomaly_rate": 0.0011,
+      "verdict": "Successfully flagged by combined classifier + anomaly detection"
+    },
+    "dga_domain_intelligence": {
+      "dataset": "DGA Domains (Held-out family split, 15,000 domains)",
+      "accuracy": 0.9206666666666666,
+      "f1_score": 0.9192344237817294,
+      "roc_auc": 0.9771548444444444
+    }
+  }
+}
