@@ -14,6 +14,12 @@ node_modules/
 .env
 .env.local
 
+# Datasets & Raw Captures
+datasets/
+*.pcap
+*.7z
+*.csv
+
 # OS / Editor Files
 .DS_Store
 *.log
