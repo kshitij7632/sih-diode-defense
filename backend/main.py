@@ -25,6 +25,7 @@ import uuid
 import logging
 import tempfile
 import asyncio
+import traceback
 from collections import deque
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
@@ -60,7 +61,15 @@ load_dotenv()
 MONGO_URL    = os.getenv("MONGO_URL", "")
 MODEL_PATH   = os.getenv("MODEL_PATH", "models/diode_threat_model_v1_baseline.pth")
 SCALER_PATH  = os.getenv("SCALER_PATH", "models/scaler_v1.pkl")
-CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,*").split(",")]
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "*"
+]
 
 # Fallback paths if default relative path differs
 if not os.path.exists(MODEL_PATH) and os.path.exists("backend/diode_threat_model.pth"):
@@ -126,8 +135,58 @@ _stats = {
     "started_at"                : datetime.now(timezone.utc).isoformat(),
     "one_way_safe"              : True,
     "anomaly_baseline_source"   : "real_dataset (CIC-IDS2017 Clean Benign)",
-    "active_analysis_mode"      : "live_ingest"
+    "active_analysis_mode"      : "live_ingest",
+    "last_alert_source"         : "none",
 }
+
+# ── Centralized Operational Telemetry Updater ─────────────────────────────────
+def record_flow_alert(alert: Dict[str, Any]) -> None:
+    """
+    Centralized operational telemetry and store updater.
+    Guarantees that single-flow analysis, PCAP streaming replay, and offline PCAP
+    analysis update the exact same global KPI stats, correlation engine, and memory stores.
+    """
+    dominant_threat = alert.get("dominant_threat") or alert.get("threat_class") or "Benign"
+    prediction = alert.get("prediction", "Benign")
+    is_threat = (dominant_threat != "Benign" or prediction != "Benign")
+    severity = alert.get("severity", "LOW")
+    is_high_risk = severity in ("HIGH", "CRITICAL")
+    is_anomaly = bool(alert.get("is_anomaly"))
+    lat_ms = float(alert.get("inference_latency_ms", 0.0))
+    mode = alert.get("analysis_mode", "live_ingest")
+
+    _stats["flows_processed"] += 1
+    _stats["total_inference_latency_ms"] += lat_ms
+    _stats["last_measured_latency_ms"] = lat_ms
+    _stats["active_analysis_mode"] = mode
+    _stats["last_alert_source"] = mode
+
+    if is_threat:
+        _stats["threats_detected"] += 1
+    if is_high_risk:
+        _stats["high_risk_alerts"] += 1
+    if is_anomaly:
+        _stats["anomaly_count"] += 1
+
+    _mem_flows.appendleft(alert)
+    if is_threat:
+        _mem_alerts.appendleft(alert)
+        try:
+            _corr_engine.ingest_alert(alert)
+        except Exception as corr_err:
+            log.warning("Correlation engine ingest error: %s", corr_err)
+
+    if _db_available and db is not None and is_threat:
+        try:
+            db_doc = dict(alert)
+            db_doc["_id"] = alert.get("alert_id")
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(db.alerts.insert_one(db_doc))
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            log.warning("MongoDB write failed: %s", exc)
 
 # ── Model Architecture ────────────────────────────────────────────────────────
 class DiodeThreatNet(nn.Module):
@@ -315,64 +374,27 @@ async def analyze_flow(flow: IngestFlowRequest):
     }
 
     # 7. Update Telemetry & Correlation
-    _stats["flows_processed"] += 1
-    _stats["total_inference_latency_ms"] += inference_latency
-    _stats["last_measured_latency_ms"] = inference_latency
-    if dominant_threat != "Benign" or prediction != "Benign":
-        _stats["threats_detected"] += 1
-    if fusion.severity in ("HIGH", "CRITICAL"):
-        _stats["high_risk_alerts"] += 1
-    if anomaly_result["is_anomaly"]:
-        _stats["anomaly_count"] += 1
-
-    _mem_flows.appendleft(alert)
-    if dominant_threat != "Benign":
-        _mem_alerts.appendleft(alert)
-        _corr_engine.ingest_alert(alert)
-
-    if _db_available and db is not None and dominant_threat != "Benign":
-        try:
-            db_doc = dict(alert)
-            db_doc["_id"] = alert_id
-            await db.alerts.insert_one(db_doc)
-        except Exception as exc:
-            log.warning("MongoDB write failed: %s", exc)
-
+    record_flow_alert(alert)
     return alert
 
 # ── Alerts & Stats Endpoints ──────────────────────────────────────────────────
 @app.get("/api/v1/alerts", summary="Retrieve recent threat alerts")
-async def get_alerts(limit: int = 50):
-    if _db_available and db is not None:
-        try:
-            cursor = db.alerts.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit)
-            alerts = await cursor.to_list(length=limit)
-            if alerts:
-                return alerts
-        except Exception as exc:
-            log.warning("MongoDB read failed (%s), falling back to memory.", exc)
+def get_alerts(limit: int = 50):
     return list(_mem_alerts)[:limit]
 
 @app.get("/api/v1/alerts/{alert_id}", summary="Get specific alert detail")
-async def get_alert(alert_id: str):
+def get_alert(alert_id: str):
     for a in _mem_alerts:
         if a.get("alert_id") == alert_id:
             return a
-    if _db_available and db is not None:
-        try:
-            doc = await db.alerts.find_one({"_id": alert_id}, {"_id": 0})
-            if doc:
-                return doc
-        except Exception as exc:
-            log.warning("MongoDB find_one failed: %s", exc)
     raise HTTPException(status_code=404, detail="Alert not found")
 
 @app.get("/api/v1/flows", summary="Retrieve all processed flows")
-async def get_flows(limit: int = 100):
+def get_flows(limit: int = 100):
     return list(_mem_flows)[:limit]
 
 @app.get("/api/v1/stats", summary="Operational real-time statistics")
-async def get_stats():
+def get_stats():
     flows = _stats["flows_processed"]
     tot_lat = _stats["total_inference_latency_ms"]
     avg_lat = round(tot_lat / flows, 3) if flows > 0 else 0.0
@@ -384,34 +406,52 @@ async def get_stats():
         "anomaly_count"               : _stats["anomaly_count"],
         "average_inference_latency_ms": avg_lat,
         "last_inference_latency_ms"   : _stats["last_measured_latency_ms"],
-        "storage_backend"             : "mongodb" if _db_available else "in-memory (high performance)",
+        "storage_backend"             : "in-memory (high performance)",
         "model_version"               : MODEL_VERSION,
         "feature_schema_version"      : FEATURE_SCHEMA_VERSION,
         "anomaly_baseline_source"     : _stats["anomaly_baseline_source"],
         "one_way_safe"                : _stats["one_way_safe"],
         "started_at"                  : _stats["started_at"],
+        "active_analysis_mode"        : _stats.get("active_analysis_mode", "live_ingest"),
+        "last_alert_source"           : _stats.get("last_alert_source", "none"),
     }
 
 # ── Correlation Clusters Endpoint ─────────────────────────────────────────────
 @app.get("/api/v1/correlation/clusters", summary="Active Correlated Threat Clusters & Forensic Timelines")
-async def get_correlation_clusters():
+def get_correlation_clusters():
     clusters = _corr_engine.get_active_clusters()
     return [c.model_dump() for c in clusters]
 
-# ── Streaming PCAP Replay Endpoint ────────────────────────────────────────────
-@app.post("/api/v1/stream-pcap", summary="True Streaming PCAP Replay with incremental alert emission")
+# ── Streaming PCAP Replay Endpoint (SSE Stream) ────────────────────────────────
+@app.post("/api/v1/stream-pcap", summary="True Streaming PCAP Replay with incremental SSE alert emission")
 async def stream_pcap_upload(file: UploadFile = File(...), speed: float = Query(0.0, description="0=max throughput, 1=1x real-time, 10=10x")):
     if not file.filename or not file.filename.lower().endswith((".pcap", ".pcapng")):
         raise HTTPException(status_code=400, detail="Only .pcap / .pcapng files are supported.")
 
-    content = await file.read()
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded PCAP file is empty.")
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".pcap", delete=False)
-    tmp.write(content)
+    # Chunked write to disk (1 MB chunks, zero complete RAM buffering)
+    ext = ".pcapng" if file.filename.lower().endswith(".pcapng") else ".pcap"
+    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     tmp_path = tmp.name
-    tmp.close()
+    
+    total_bytes = 0
+    try:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            tmp.write(chunk)
+            total_bytes += len(chunk)
+        tmp.close()
+    except Exception as exc:
+        tmp.close()
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to process upload: {exc}")
+
+    if total_bytes == 0:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=400, detail="Uploaded PCAP file is empty.")
 
     session = StreamingReplaySession(
         pcap_path=tmp_path,
@@ -423,34 +463,119 @@ async def stream_pcap_upload(file: UploadFile = File(...), speed: float = Query(
         fusion_engine=_fusion_eng
     )
 
-    alerts = []
-    async for a in session.stream_replay():
-        alerts.append(a)
-        _mem_flows.appendleft(a)
-        if a["dominant_threat"] != "Benign":
-            _mem_alerts.appendleft(a)
+    async def sse_event_generator():
+        import json as _json
+        try:
+            async for evt in session.stream_replay():
+                if evt.get("type") == "alert" and evt.get("alert"):
+                    record_flow_alert(evt["alert"])
+                yield f"data: {_json.dumps(evt)}\n\n"
+        except (asyncio.CancelledError, GeneratorExit):
+            log.info("PCAP SSE stream connection closed by client.")
+        except Exception as err:
+            tb = traceback.format_exc()
+            log.error(
+                "Unhandled exception in PCAP SSE generator "
+                "(pkts=%d flows=%d alerts=%d):\n%s",
+                session.packets_processed,
+                session.flows_processed,
+                session.alerts_emitted,
+                tb,
+            )
+            err_evt = {
+                "type"              : "error",
+                "message"          : str(err),
+                "traceback"        : tb,
+                "packets_processed": session.packets_processed,
+                "flows_processed"  : session.flows_processed,
+                "alerts_emitted"   : session.alerts_emitted,
+            }
+            yield f"data: {_json.dumps(err_evt)}\n\n"
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                    log.debug("Cleaned up temp PCAP file: %s", tmp_path)
+                except Exception as cleanup_err:
+                    log.warning("Failed to remove temp PCAP %s: %s", tmp_path, cleanup_err)
 
-    try:
-        os.unlink(tmp_path)
-    except Exception:
-        pass
+    return StreamingResponse(
+        sse_event_generator(),
+        media_type="text/event-stream",
+        headers={
+            # Prevent Nginx / proxy buffering that could stall SSE delivery
+            "X-Accel-Buffering": "no",
+            "Cache-Control"    : "no-cache",
+        },
+    )
 
-    metrics = session.get_metrics()
-    return {
-        "message": f"Successfully replayed {file.filename} in streaming mode.",
-        "telemetry": metrics,
-        "alerts_count": len(alerts),
-        "alerts": alerts
-    }
-
-# ── Offline PCAP Analysis ─────────────────────────────────────────────────────
+# ── Offline PCAP Analysis (Bounded JSON response) ─────────────────────────────
 @app.post("/api/v1/analyze-pcap", summary="Offline PCAP file analysis")
 async def analyze_pcap_offline(file: UploadFile = File(...)):
-    return await stream_pcap_upload(file=file, speed=0.0)
+    if not file.filename or not file.filename.lower().endswith((".pcap", ".pcapng")):
+        raise HTTPException(status_code=400, detail="Only .pcap / .pcapng files are supported.")
+
+    ext = ".pcapng" if file.filename.lower().endswith(".pcapng") else ".pcap"
+    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+    tmp_path = tmp.name
+    try:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            tmp.write(chunk)
+        tmp.close()
+
+        ALERT_RESPONSE_LIMIT = 500
+
+        session = StreamingReplaySession(
+            pcap_path=tmp_path,
+            replay_speed=0.0,
+            model=_model,
+            scaler=_scaler,
+            anomaly_detector=_anomaly_det,
+            behaviour_engine=_behav_eng,
+            fusion_engine=_fusion_eng
+        )
+
+        alerts: List[Dict[str, Any]] = []
+        alerts_truncated = False
+        async for evt in session.stream_replay():
+            if evt.get("type") == "alert" and evt.get("alert"):
+                a = evt["alert"]
+                record_flow_alert(a)
+                if len(alerts) < ALERT_RESPONSE_LIMIT:
+                    alerts.append(a)
+                else:
+                    alerts_truncated = True
+            elif evt.get("type") == "error":
+                log.error(
+                    "analyze-pcap replay error: %s\n%s",
+                    evt.get("message"),
+                    evt.get("traceback", ""),
+                )
+
+        metrics = session.get_metrics()
+        return {
+            "message"          : f"Successfully replayed {file.filename} ({metrics['packets_processed']} packets, {metrics['flows_processed']} flows).",
+            "telemetry"        : metrics,
+            "total_alerts"     : metrics["alerts_emitted"],
+            "returned_alerts"  : len(alerts),
+            "alerts_count"     : metrics["alerts_emitted"],
+            "alerts_truncated" : alerts_truncated,
+            "alerts"           : alerts,
+            "results"          : alerts,
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 # ── Performance Benchmark Summary ─────────────────────────────────────────────
 @app.get("/api/v1/benchmark/summary", summary="Retrieve verified benchmark performance metrics")
-async def get_benchmark_summary():
+def get_benchmark_summary():
     report_path = "reports/performance_benchmark.json"
     if os.path.exists(report_path):
         import json
@@ -460,12 +585,12 @@ async def get_benchmark_summary():
 
 # ── Health Check ──────────────────────────────────────────────────────────────
 @app.get("/api/v1/health", summary="System Health & One-Way Architecture Status")
-async def health():
+def health():
     return {
         "status"                 : "ok",
         "model_loaded"           : True,
         "scaler_loaded"          : True,
-        "db_available"           : _db_available,
+        "db_available"           : False,
         "model_version"          : MODEL_VERSION,
         "feature_schema_version" : FEATURE_SCHEMA_VERSION,
         "one_way_safe"           : True,

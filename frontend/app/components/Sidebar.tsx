@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Shield, Activity, AlertTriangle, Database,
-  Cpu, BarChart2, FileCode, Zap, Radio,
+  Cpu, BarChart2, FileCode, Zap, Radio, GitCommit,
 } from 'lucide-react';
 
 const NAV = [
   { href: '/',           label: 'Overview',          icon: Shield },
   { href: '/monitor',    label: 'Live Monitor',       icon: Activity },
   { href: '/threats',    label: 'Threats',            icon: AlertTriangle },
+  { href: '/stories',    label: 'Attack Stories',     icon: GitCommit },
   { href: '/flows',      label: 'Flow Explorer',      icon: Database },
   { href: '/detection',  label: 'Detection Engine',   icon: Cpu },
   { href: '/analytics',  label: 'Analytics',          icon: BarChart2 },

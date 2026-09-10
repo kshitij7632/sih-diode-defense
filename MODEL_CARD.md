@@ -8,7 +8,10 @@
 ---
 
 ## 1. Model Purpose & Intended Use
-GeoGuards is designed for **passive, non-intrusive threat monitoring** in high-security unidirectional network architectures (e.g., hardware optical data diodes). The system monitors one-way tapped IP traffic streams to detect cyber threats across six core problem statement categories without requiring payload decryption, active probing, or reciprocal packet transmission.
+GeoGuards is designed for **passive, non-intrusive threat monitoring** in high-security unidirectional network architectures (e.g., physical optical data diodes). The system monitors one-way tapped IP traffic streams to detect cyber threats across six core problem statement categories without requiring payload decryption, active probing, or reciprocal packet transmission.
+
+> [!IMPORTANT]
+> **Operational Boundary:** GeoGuards is designed to operate behind a hardware-enforced unidirectional boundary. The GeoGuards software layer itself is passive/read-only and performs no outbound probing, reciprocal communication, or inline mitigation.
 
 ### Intended Use Cases
 - High-assurance air-gapped or diode-isolated operational technology (OT/ICS) networks.
@@ -65,56 +68,56 @@ DiodeThreatNet  Real-Benign        Behaviour Heuristics   Specialized Detectors
 
 ---
 
-## 4. Leakage Prevention & Split Methodology
-1. **Temporal & Session Partitioning:** Training and testing records are strictly partitioned by capture session to avoid connection-level leakage between train and test sets.
-2. **Fit-on-Train Scalers:** `StandardScaler` instances (`scaler_v1.pkl`, `scaler_v2.pkl`) were fit strictly on training splits.
-3. **Pure Real-Benign Baseline:** The `IsolationForest` anomaly detector is fit exclusively on Monday/Tuesday benign traffic, with 0% attack exposure during fitting.
-4. **Zero-Day Holdout:** Captures from `unkownTunnel` (Cobalt Strike, tcp-over-dns, ozymandns) were strictly quarantined from model training and used only for generalization testing.
+## 4. Leakage Prevention & Scientific Validation Methodology
+
+1. **Strict Day & Capture Isolation:** Models are trained on Monday Benign & Wednesday DoS captures and tested against completely unseen Friday Benign and Friday DDoS captures. No session or capture occurs in both train and test.
+2. **Feature Shortcut Ablation:** Tested with and without `dst_port` and `protocol` to ensure detection is driven by physical flow dynamics (rates, inter-arrival time variance, packet length distribution) rather than port lookups.
+3. **Pure Real-Benign Baseline:** The `IsolationForest` anomaly detector is fit exclusively on clean Monday benign traffic, with 0% attack exposure during fitting.
+4. **Zero-Day Quarantine:** Unknown DNS tunnels (`unkownTunnel`: Cobalt Strike, tcp-over-dns, ozymandns) were strictly quarantined from model training, scaling, and threshold tuning.
 
 ---
 
-## 5. Quantitative Evaluation Metrics (Measured)
+## 5. Quantitative Evaluation Metrics (Day-Isolated)
 
-### In-Distribution Test Set (9,730 flows)
+### Day & Capture-Isolated Benchmark (21,620 flows)
 - **Model V1 Baseline (6 features):**
-  - Accuracy: **97.21%**
-  - Macro Precision: **0.9401**
-  - Macro Recall: **0.8913**
-  - Macro F1: **0.9112**
-  - Weighted F1: **0.9710**
-  - Benign FPR (False Alarm Rate): **1.78%**
-  - Threat FNR (Miss Rate): **3.50%**
-  - Measured Forward-Pass Latency: **0.074 ms** (P95: 0.117 ms)
+  - Accuracy: **80.51%**
+  - Macro F1: **0.6445**
+  - Weighted F1: **0.7928**
+  - Benign False Alarm Rate (FPR): **1.04%**
+  - Model Inference Latency: **0.142 ms** (P95: 0.241 ms)
 
 - **Model V2 Expanded (25 features):**
-  - Accuracy: **99.00%**
-  - Macro Precision: **0.9843**
-  - Macro Recall: **0.9344**
-  - Macro F1: **0.9560**
-  - Weighted F1: **0.9895**
-  - Benign FPR: **0.31%**
-  - Threat FNR: **1.59%**
-  - Measured Forward-Pass Latency: **0.114 ms** (P95: 0.216 ms)
+  - Accuracy: **81.89%**
+  - Macro F1: **0.8621**
+  - Weighted F1: **0.8153**
+  - Benign FPR: **4.21%**
+  - Model Inference Latency: **0.202 ms** (P95: 0.364 ms)
 
-- **DGA Domain Intelligence Component:**
-  - Accuracy: **92.07%** | F1: **0.9192** | ROC-AUC: **0.9772**
+- **Model V2 Port-Agnostic (22 features without ports/protocols):**
+  - Accuracy: **80.87%**
+  - Macro F1: **0.8573**
 
-- **Zero-Day DNS Tunnel Generalization (Held-out Cobalt Strike / tcp-over-dns):**
+- **Model V2 Pure Telemetry (21 features, no shortcuts):**
+  - Accuracy: **82.02%**
+  - Macro F1: **0.8864**
+
+- **Zero-Day Held-Out DNS Threat Generalization (Cobalt Strike / tcp-over-dns):**
   - Detection Rate: **95.06%**
 
 ---
 
-## 6. Throughput & System Performance
+## 6. System Latency & Performance Latencies (Measured)
 
-| Execution Stage | Measured Throughput / Latency | SLA Requirement | Status |
+| Latency / Benchmark Metric | Measured Value | Standard / SLA | Status |
 |---|---|---|---|
-| Model V1 Forward Pass | 0.074 ms avg / 0.117 ms p95 | < 1.0 ms | **PASSED** |
-| Full End-to-End Pipeline | 146.3 flows/sec / 6.83 ms avg | Sustained Line Ingest | **PASSED** |
-| Streaming PCAP Replay | 670 pkts/sec / 0.214 Mbps | Line Rate Replay | **PASSED** |
-| Maximum Alert Latency | 10.72 ms (P95) | < 2.0 s Bounded Latency | **PASSED** |
+| Model V1 Forward Pass | **0.142 ms avg** / **0.241 ms P95** | < 1.0 ms | **PASSED** |
+| Model V2 Forward Pass | **0.202 ms avg** / **0.364 ms P95** | < 1.0 ms | **PASSED** |
+| Full End-to-End Pipeline Latency | **6.833 ms avg** / **10.723 ms P95** | < 2.0 s Bounded SLA | **PASSED** |
+| Sustained Pipeline Throughput | **146.33 flows/sec** | Sustained Line Ingest | **PASSED** |
+| Streaming PCAP Replay Rate | **670 packets/sec** | Real-time Emulation | **PASSED** |
 
 ---
 
-## 7. Known Limitations & Constraints
-1. **Encrypted Traffic Limitations:** In compliance with PS constraints prohibiting payload decryption, GeoGuards analyzes observable metadata only (packet lengths, inter-arrival timing, entropy proxies, and TLS SNI where passively present). Advanced polymorphic payloads masked inside standard HTTPS streams without anomalous flow timing may require cross-flow correlation for detection.
-2. **One-Way Architectural Safety:** GeoGuards software strictly disables outbound socket creation, active health probes, and reciprocal ICMP traffic. Physical data-diode isolation is enforced by the hardware layer.
+## 7. Limitations
+- **Encrypted Session Constraints:** GeoGuards inspects unencrypted metadata and transport timing only. Fully encrypted sessions with standard burst and packet-size distribution require cross-flow correlation and domain intelligence.

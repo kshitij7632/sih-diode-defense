@@ -8,11 +8,11 @@ const PROFILES: Record<string, object> = {
   normal: {
     source_ip: '10.0.1.10', destination_ip: '10.0.0.1',
     source_port: 54321, destination_port: 80, protocol: 6,
-    iat_mean: 0.05, iat_std: 0.02, pkt_len_mean: 600, pkt_len_std: 100,
-    payload_entropy: 5.0, syn_ratio: 0.03, tcp_rst_ratio: 0.01, tcp_fin_ratio: 0.05,
-    duration: 2.0, packet_count: 40, byte_count: 24000,
-    forward_pkts: 20, backward_pkts: 20, forward_bytes: 12000, backward_bytes: 12000,
-    analysis_mode: 'synthetic_demo',
+    iat_mean: 0.99, iat_std: 1.42, pkt_len_mean: 100.0, pkt_len_std: 132.0,
+    payload_entropy: 4.97, syn_ratio: 0.02, tcp_rst_ratio: 0.01, tcp_fin_ratio: 0.05,
+    duration: 10.0, packet_count: 50, byte_count: 5000,
+    forward_pkts: 25, backward_pkts: 25, forward_bytes: 2500, backward_bytes: 2500,
+    analysis_mode: 'demo_simulation',
   },
   syn_flood: {
     source_ip: '10.0.4.182', destination_ip: '10.0.0.1',
@@ -21,7 +21,7 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 0.15, syn_ratio: 0.99, tcp_rst_ratio: 0.0, tcp_fin_ratio: 0.0,
     duration: 0.5, packet_count: 800, byte_count: 51200,
     forward_pkts: 800, backward_pkts: 0, forward_bytes: 51200, backward_bytes: 0,
-    analysis_mode: 'synthetic_demo',
+    analysis_mode: 'demo_simulation',
   },
   dns_tunnel: {
     source_ip: '192.168.10.45', destination_ip: '8.8.8.8',
@@ -31,7 +31,7 @@ const PROFILES: Record<string, object> = {
     duration: 5.0, packet_count: 60, byte_count: 11400,
     forward_pkts: 30, backward_pkts: 30, forward_bytes: 5700, backward_bytes: 5700,
     dns_query: 'exfiltratedchunk38472918.tunnel.victim.com',
-    analysis_mode: 'synthetic_demo',
+    analysis_mode: 'demo_simulation',
   },
   c2_beacon: {
     source_ip: '172.16.0.88', destination_ip: '91.195.240.117',
@@ -40,7 +40,7 @@ const PROFILES: Record<string, object> = {
     payload_entropy: 4.1, syn_ratio: 0.0, tcp_rst_ratio: 0.01, tcp_fin_ratio: 0.02,
     duration: 120.0, packet_count: 60, byte_count: 7500,
     forward_pkts: 30, backward_pkts: 30, forward_bytes: 3750, backward_bytes: 3750,
-    analysis_mode: 'synthetic_demo',
+    analysis_mode: 'demo_simulation',
   },
 };
 

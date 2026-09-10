@@ -18,9 +18,11 @@ node_modules/
 datasets/
 ml/artifacts/
 *.pcap
+*.pcapng
 *.7z
 *.csv
 *.npz
+scratch/
 
 # OS / Editor Files
 .DS_Store

@@ -1,6 +1,6 @@
 # GeoGuards Machine Learning & Detection Subsystem
 
-This document provides a comprehensive technical guide to the machine learning pipelines, feature engineering schemas, specialized detector modules, and benchmarking suites within **GeoGuards** (Smart India Hackathon 2026, Problem Statement 26145: *AI-Based Detection of Cyber Threats in Unidirectional IP Traffic*).
+This document provides a comprehensive technical guide to the machine learning pipelines, feature engineering schemas, specialized detector modules, rigorous leakage validation, and benchmarking suites within **GeoGuards** (Smart India Hackathon 2026, Problem Statement 26145: *AI-Based Detection of Cyber Threats in Unidirectional IP Traffic*).
 
 ---
 
@@ -9,11 +9,21 @@ This document provides a comprehensive technical guide to the machine learning p
 ```
 ml/
 ├── artifacts/              # Preprocessed data splits (.npz, .json)
+├── reports/                # Rigorous validation, leakage, ablation & multi-seed reports
+│   ├── overfitting_audit_initial.md
+│   ├── duplicate_leakage_audit.json
+│   ├── feature_leakage_audit.md
+│   ├── ablation_results.json
+│   ├── learning_curves.png
+│   ├── learning_curve_analysis.md
+│   ├── multi_seed_results.json
+│   └── FINAL_VALIDATION_REPORT.md
 ├── scripts/
-│   ├── audit_datasets.py   # Dataset auditing and manifest generation
-│   ├── feature_schema.py   # Canonical feature definitions (V1 & V2)
-│   ├── preprocess_data.py  # Leakage-safe data parsing and scaler generation
-│   └── train_models.py     # Multi-model training, calibration & evaluation
+│   ├── audit_datasets.py        # Dataset auditing and manifest generation
+│   ├── feature_schema.py        # Canonical feature definitions (V1 & V2)
+│   ├── preprocess_data.py       # Data parsing and scaler generation
+│   ├── train_models.py          # Multi-model training & baseline evaluation
+│   └── rigorous_validation.py   # Day-isolated leakage audit & ablation suite
 backend/
 ├── specialized_detectors.py# Detectors for 6 PS threat classes
 ├── correlation.py          # Cross-flow correlation & timeline tracker
@@ -51,7 +61,7 @@ Enhanced flow and protocol metadata for deeper representation:
 
 ## 3. Specialized Detection Ensembles
 
-GeoGuards avoids forcing all network anomalies into a rigid 4-class classifier by deploying dedicated detection engines for the **6 Problem Statement Threat Classes**:
+GeoGuards deploys dedicated detection engines for the **6 Problem Statement Threat Classes**:
 
 1. **Volumetric / Protocol DDoS (`DDoSDetector`):**
    - High SYN ratio ($>0.80$), burst packet rate, small uniform packet sizes, high UDP PPS.
@@ -68,39 +78,27 @@ GeoGuards avoids forcing all network anomalies into a rigid 4-class classifier b
 
 ---
 
-## 4. How to Reproduce Training & Evaluation
+## 4. Rigorous Scientific Validation & Day-Isolated Evaluation
 
-All preprocessing, training, and benchmarking scripts are fully automated:
+To ensure evaluation integrity, GeoGuards was subjected to a rigorous scientific audit eliminating all session and file-level overlap:
 
-```bash
-# 1. Audit local datasets and generate manifest
-python ml/scripts/audit_datasets.py
-
-# 2. Preprocess data and generate leakage-safe splits
-python ml/scripts/preprocess_data.py
-
-# 3. Train Model V1, V2, Isolation Forest, and DGA classifier
-python ml/scripts/train_models.py
-
-# 4. Run throughput and bounded-latency benchmarks
-python backend/benchmark.py
-```
-
----
-
-## 5. Measured Evaluation Summary
-
-| Model / Component | Accuracy | Macro F1 | Weighted F1 | Avg Latency | P95 Latency |
+| Model Configuration | Feature Count | Day-Isolated Accuracy | Macro F1 | Benign FPR (False Alarms) | Avg Model Latency |
 |---|---|---|---|---|---|
-| **DiodeThreatNet V1 (Baseline)** | **97.21%** | **0.9112** | **0.9710** | **0.074 ms** | **0.117 ms** |
-| **DiodeThreatNet V2 (Expanded)** | **99.00%** | **0.9560** | **0.9895** | **0.114 ms** | **0.216 ms** |
-| **DGA Domain Classifier** | **92.07%** | **0.9192** | - | **0.420 ms** | **0.650 ms** |
-| **Full Multi-Signal Pipeline** | - | - | - | **6.833 ms** | **10.723 ms** |
+| **DiodeThreatNet V1 Baseline** | 6 | **80.51%** | **0.6445** | **1.040%** | **0.142 ms** |
+| **DiodeThreatNet V2 Expanded** | 25 | **81.89%** | **0.8621** | **4.210%** | **0.202 ms** |
+| **V2 Port-Agnostic (No Ports/Proto)** | 22 | **80.87%** | **0.8573** | **4.310%** | **0.195 ms** |
+| **V2 Pure Telemetry (No Shortcuts)** | 21 | **82.02%** | **0.8864** | **1.800%** | **0.194 ms** |
+
+### Additional Benchmark Components:
+- **Zero-Day Unknown DNS Threat Detection Rate:** **95.06%** (Held-out Cobalt Strike, tcp-over-dns, ozymandns)
+- **Multi-Seed Stability (5 Seeds):** `77.15% ± 2.62%` Accuracy | `0.5366 ± 0.1206` Macro F1
+- **Isolation Forest Anomaly Baseline:** Fitted exclusively on clean Monday benign network flows.
+- **End-to-End Pipeline Latency:** **6.833 ms avg** (P95: **10.723 ms**, well within the < 2.0s bounded SLA).
+- **System Throughput:** **146.33 flows/second** sustained pipeline throughput.
 
 ---
 
-## 6. One-Way Architecture & Passive Guarantees
+## 5. One-Way Architecture & Passive Guarantees
 
-- **No Active Probing:** GeoGuards contains zero ping, port scan, or reverse connection logic.
-- **Physical Diode Compatibility:** Tested on passive tapped PCAP captures and streaming packet replays.
+- **Hardware Diode Enforced:** GeoGuards is designed to operate behind a hardware-enforced unidirectional boundary. The GeoGuards software layer itself is passive/read-only and performs no outbound probing, reciprocal communication, or inline mitigation.
 - **Explainability First:** Every alert emitted contains a structured `evidence` array containing measurable forensic observations and interpretations.

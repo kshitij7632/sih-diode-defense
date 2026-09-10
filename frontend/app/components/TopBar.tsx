@@ -13,18 +13,26 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [model, setModel]   = useState<string>('');
 
   useEffect(() => {
+    let mounted = true;
     const check = async () => {
       try {
         const h = await API.health();
-        setApiOk(h.status === 'ok');
-        setModel(h.model_version ?? '');
+        if (mounted) {
+          setApiOk(h.status === 'ok');
+          setModel(h.model_version ?? '');
+        }
       } catch {
-        setApiOk(false);
+        if (mounted) {
+          setApiOk(false);
+        }
       }
     };
     check();
-    const id = setInterval(check, 10_000);
-    return () => clearInterval(id);
+    const id = setInterval(check, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
   }, []);
 
   return (

@@ -52,6 +52,8 @@ export interface Stats {
   anomaly_baseline_source?:       string;
   one_way_safe?:                  boolean;
   started_at:                     string;
+  active_analysis_mode?:          string;
+  last_alert_source?:             string;
 }
 
 export interface HealthStatus {
@@ -106,17 +108,24 @@ export interface StreamingTelemetry {
 }
 
 export interface StreamingReplayResponse {
-  message:      string;
-  telemetry:    StreamingTelemetry;
-  alerts_count: number;
-  alerts:       Alert[];
+  message:          string;
+  telemetry:        StreamingTelemetry;
+  total_alerts?:    number;
+  returned_alerts?: number;
+  alerts_count:     number;
+  alerts_truncated?: boolean;
+  alerts:           Alert[];
 }
 
 export interface PcapAnalysisResult {
-  message:     string;
-  flow_count:  number;
-  results:     Alert[];
-  telemetry?:  StreamingTelemetry;
+  message:          string;
+  flow_count?:      number;
+  total_alerts?:    number;
+  returned_alerts?: number;
+  alerts_count?:    number;
+  alerts_truncated?: boolean;
+  results:          Alert[];
+  telemetry?:       StreamingTelemetry;
 }
 
 export interface TrendPoint {

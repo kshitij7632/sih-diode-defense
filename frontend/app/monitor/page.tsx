@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, Cpu, Server } from 'lucide-react';
@@ -11,6 +11,7 @@ import { SeverityBadge, RiskBar } from '../components/SeverityBadge';
 import { AlertDrawer } from '../components/AlertDrawer';
 import { EmptyState, LoadingState } from '../components/EmptyState';
 import { HealthPanel } from '../components/HealthPanel';
+import { ContinuousOperations } from '../components/ContinuousOperations';
 
 const TOOLTIP_STYLE = {
   backgroundColor: 'var(--gg-surface)',
@@ -63,6 +64,10 @@ export default function LiveMonitor() {
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
+  const latestSource = sorted[0]?.analysis_mode || stats?.last_alert_source || stats?.active_analysis_mode;
+  const isPcap = latestSource === 'streaming_pcap_replay' || latestSource === 'pcap_replay';
+  const isDemo = latestSource === 'demo_simulation' || latestSource === 'synthetic_demo';
+
   const SEV: Record<string, string> = {
     CRITICAL: 'var(--gg-red)', HIGH: 'var(--gg-orange)',
     MEDIUM: 'var(--gg-amber)', LOW: 'var(--gg-green)',
@@ -88,6 +93,9 @@ export default function LiveMonitor() {
             icon={<Cpu size={16} />} iconColor="var(--gg-cyan)"
             note="Target <2s" />
         </section>
+
+        {/* Continuous Operations */}
+        <ContinuousOperations onSelectAlert={setSelected} />
 
         {/* Risk trend */}
         <div className="gg-card" style={{ padding: 20 }}>
@@ -116,7 +124,24 @@ export default function LiveMonitor() {
         {/* Alert stream + health */}
         <section style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
           <div className="gg-card" style={{ padding: 20 }}>
-            <p className="gg-label" style={{ marginBottom: 14 }}>Current Alert Stream</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <p className="gg-label" style={{ margin: 0 }}>Current Alert Stream</p>
+              {latestSource && (
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  padding: '3px 10px',
+                  borderRadius: 14,
+                  background: isPcap ? 'rgba(168, 85, 247, 0.12)' : isDemo ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                  border: `1px solid ${isPcap ? 'rgba(168, 85, 247, 0.4)' : isDemo ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
+                  color: isPcap ? '#c084fc' : isDemo ? '#fbbf24' : '#34d399',
+                  textTransform: 'uppercase',
+                }}>
+                  {isPcap ? 'Data Source: PCAP Replay' : isDemo ? 'Data Source: Demo Simulation' : 'Data Source: Live Ingest'}
+                </span>
+              )}
+            </div>
             {loading ? (
               <LoadingState message="Polling backend…" />
             ) : sorted.length === 0 ? (
@@ -152,9 +177,18 @@ export default function LiveMonitor() {
                         </td>
                         <td style={{ padding: '8px 8px 8px 0', fontSize: 11, color: 'var(--gg-muted)' }}>{proto(a.protocol)}</td>
                         <td style={{ padding: '8px 8px 8px 0' }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: SEV[a.severity] ?? 'var(--gg-text-2)' }}>
-                            {a.dominant_threat}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: SEV[a.severity] ?? 'var(--gg-text-2)' }}>
+                              {a.dominant_threat}
+                            </span>
+                            <span style={{ fontSize: 9, color: 'var(--gg-muted)', letterSpacing: '0.02em' }}>
+                              Source: {
+                                a.analysis_mode === 'streaming_pcap_replay' ? 'PCAP Replay' :
+                                a.analysis_mode === 'demo_simulation' ? 'Demo Simulation' :
+                                'Live Ingest'
+                              }
+                            </span>
+                          </div>
                         </td>
                         <td style={{ padding: '8px 8px 8px 0', minWidth: 90 }}>
                           <RiskBar score={a.final_risk_score} severity={a.severity} />

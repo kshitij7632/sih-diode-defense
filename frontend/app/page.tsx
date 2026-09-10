@@ -1,17 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Cpu, ShieldAlert, Zap, Radio, CheckCircle, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Activity, AlertTriangle, Cpu, ShieldAlert, Zap, Radio,
+  CheckCircle, RefreshCw, GitCommit, ArrowRight, ShieldCheck
+} from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis,
   PieChart, Pie, Cell,
 } from 'recharts';
 import { API } from './lib/api';
-import type { Alert, Stats, TrendPoint } from './lib/types';
+import type { Alert, Stats, TrendPoint, CorrelationCluster } from './lib/types';
 import { TopBar } from './components/TopBar';
 import { KpiCard } from './components/KpiCard';
 import { SeverityBadge, RiskBar } from './components/SeverityBadge';
 import { AlertDrawer } from './components/AlertDrawer';
+import { ContinuousOperations } from './components/ContinuousOperations';
 import { NetworkTopology } from './components/NetworkTopology';
 import { HealthPanel } from './components/HealthPanel';
 import { EmptyState } from './components/EmptyState';
@@ -20,6 +25,12 @@ const THREAT_COLORS: Record<string, string> = {
   'SYN/UDP Flood': '#f87171',
   'DNS Tunneling': '#22d3ee',
   'C2 Beaconing':  '#fb923c',
+  'Volumetric / Protocol DDoS': '#f87171',
+  'Botnet C2 Beaconing': '#fb923c',
+  'DGA Domains and DNS Tunnelling': '#22d3ee',
+  'Reconnaissance / Port Scanning': '#a855f7',
+  'Data Exfiltration': '#ec4899',
+  'Malware in Encrypted Sessions': '#3b82f6',
   'Anomaly':       '#fbbf24',
   'Benign':        '#34d399',
 };
@@ -46,6 +57,7 @@ function proto(n: number) {
 
 export default function Overview() {
   const [alerts,     setAlerts]     = useState<Alert[]>([]);
+  const [clusters,   setClusters]   = useState<CorrelationCluster[]>([]);
   const [stats,      setStats]      = useState<Stats | null>(null);
   const [trend,      setTrend]      = useState<TrendPoint[]>([]);
   const [selected,   setSelected]   = useState<Alert | null>(null);
@@ -54,6 +66,10 @@ export default function Overview() {
 
   const fetchAll = useCallback(async () => {
     try { setStats(await API.stats()); } catch { /* offline */ }
+    try {
+      const clusterData = await API.correlationClusters();
+      if (Array.isArray(clusterData)) setClusters(clusterData);
+    } catch { /* offline */ }
     try {
       const data = await API.alerts(100);
       if (!Array.isArray(data)) return;
@@ -135,7 +151,7 @@ export default function Overview() {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <TopBar
         title="Security Operations Center"
-        subtitle="Network Overview · Live telemetry · Passive monitoring only"
+        subtitle="Passive Cyber Intelligence · Unidirectional Architecture · Continuous Monitoring"
       />
 
       <div style={{ flex: 1, padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -169,7 +185,7 @@ export default function Overview() {
                 Instant Attack Simulator
               </span>
               <span style={{ fontSize: 11, color: 'var(--gg-text-3)', marginLeft: 8 }}>
-                {injectMsg || 'Inject synthetic flow bursts to observe real-time AI classification & risk fusion'}
+                {injectMsg || 'Inject synthetic flow bursts to observe real-time AI classification, correlation & continuous operations'}
               </span>
             </div>
           </div>
@@ -211,42 +227,135 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* ── KPI Cards ── */}
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+        {/* ── 6 Top KPIs (Measured Backend Data Only) ── */}
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14 }}>
           <KpiCard
-            label="Active Flows Ingested"
+            label="Flows Processed"
             value={stats?.flows_processed ?? null}
-            icon={<Activity size={16} />}
+            icon={<Activity size={15} />}
             iconColor="var(--gg-green)"
-            note="Unidirectional passive stream"
+            note="Unidirectional stream"
           />
           <KpiCard
-            label="Threat Alerts Detected"
+            label="Threats Detected"
             value={stats?.threats_detected ?? null}
-            icon={<ShieldAlert size={16} />}
+            icon={<ShieldAlert size={15} />}
             iconColor="var(--gg-red)"
             warning={(stats?.threats_detected ?? 0) > 0}
           />
           <KpiCard
-            label="High-Risk Severities"
+            label="High Risk Alerts"
             value={stats?.high_risk_alerts ?? null}
-            icon={<AlertTriangle size={16} />}
+            icon={<AlertTriangle size={15} />}
             iconColor="var(--gg-orange)"
-            note="HIGH + CRITICAL severity"
+            note="CRITICAL & HIGH"
           />
           <KpiCard
-            label="Avg Inference Latency"
-            value={stats?.average_inference_latency_ms != null
-              ? stats.average_inference_latency_ms.toFixed(2)
-              : null}
+            label="Novel Anomalies"
+            value={stats?.anomaly_count ?? null}
+            icon={<Activity size={15} />}
+            iconColor="var(--gg-amber)"
+            note="Isolation Forest"
+          />
+          <KpiCard
+            label="Avg Inference"
+            value={stats?.average_inference_latency_ms != null ? stats.average_inference_latency_ms.toFixed(2) : null}
             unit={stats?.average_inference_latency_ms != null ? 'ms' : undefined}
-            icon={<Cpu size={16} />}
+            icon={<Cpu size={15} />}
             iconColor="var(--gg-cyan)"
-            note="Sub-millisecond model target"
+            note="Target < 2.0s SLA"
+          />
+          <KpiCard
+            label="One-Way Safety"
+            value={stats?.one_way_safe !== false ? 'VERIFIED' : 'ACTIVE'}
+            icon={<ShieldCheck size={15} />}
+            iconColor="var(--gg-green)"
+            note="Zero active probing"
           />
         </section>
 
-        {/* ── Charts Row ── */}
+        {/* ── Feature A & B: Continuous Operations & Parallel Traffic View ── */}
+        <section>
+          <ContinuousOperations onSelectAlert={setSelected} />
+        </section>
+
+        {/* ── Feature C: Attack Stories & Correlated Incidents Preview ── */}
+        {clusters.length > 0 && (
+          <section className="gg-card" style={{ padding: '20px 24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <GitCommit size={18} color="var(--gg-cyan)" />
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--gg-text)' }}>
+                  Correlated Attack Stories ({clusters.length} Active Incidents)
+                </h3>
+              </div>
+              <Link
+                href="/stories"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--gg-cyan)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  textDecoration: 'none'
+                }}
+              >
+                Open Investigation Console <ArrowRight size={13} />
+              </Link>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+              {clusters.slice(0, 3).map((c) => (
+                <Link
+                  key={c.cluster_id}
+                  href="/stories"
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <div style={{
+                    padding: 14,
+                    borderRadius: 'var(--gg-radius-sm)',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid var(--gg-border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    transition: 'all 0.15s ease'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--gg-text)', fontFamily: 'var(--font-mono)' }}>
+                        {c.src_ip}
+                      </span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: '#f87171', padding: '2px 6px', borderRadius: 4, background: 'rgba(239, 68, 68, 0.15)'
+                      }}>
+                        {(c.correlated_score * 100).toFixed(0)}% RISK
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {c.threat_categories.map((cat) => (
+                        <span key={cat} style={{
+                          fontSize: 10, fontWeight: 600, color: 'var(--gg-text-2)',
+                          padding: '2px 6px', borderRadius: 3, background: 'rgba(255,255,255,0.05)'
+                        }}>
+                          {cat}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: 11, color: 'var(--gg-text-3)', fontStyle: 'italic', lineHeight: 1.3 }}>
+                      "{c.narrative.slice(0, 110)}…"
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Live Threat Activity (Trend + Distribution) ── */}
         <section style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
           {/* Trend */}
           <div className="gg-card" style={{ padding: 22 }}>
@@ -287,7 +396,7 @@ export default function Overview() {
               <EmptyState
                 title="NO ACTIVE THREATS"
                 message="Listening on passive diode channel. Trigger an instant burst above to evaluate the models."
-                actionLabel="⚡ Inject 10 Mixed Flows"
+                actionLabel="⚡ Inject Mixed Flows"
                 onAction={() => quickBurst('mixed')}
               />
             )}
@@ -337,12 +446,12 @@ export default function Overview() {
           </div>
         </section>
 
-        {/* ── Bottom Row ── */}
+        {/* ── Recent Alerts & One-Way Architecture Safety Panel ── */}
         <section style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
           {/* Threat feed */}
           <div className="gg-card" style={{ padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <p className="gg-label">Live Threat Stream & Consensus</p>
+              <p className="gg-label">Live Threat Stream & Consensus (Click to Inspect Evidence)</p>
               <span style={{ fontSize: 11, color: 'var(--gg-text-3)', fontFamily: 'var(--font-mono)' }}>
                 {sorted.length} alerts logged
               </span>
@@ -370,12 +479,13 @@ export default function Overview() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.slice(0, 30).map((a) => (
+                    {sorted.slice(0, 20).map((a) => (
                       <tr
                         key={a.alert_id}
                         id={`alert-row-${a.alert_id}`}
                         onClick={() => setSelected(a)}
                         className="gg-table-row animate-slide-up"
+                        style={{ cursor: 'pointer' }}
                       >
                         <td style={{ padding: '11px 10px 11px 0', fontSize: 11, color: 'var(--gg-text-3)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
                           {fmtTime(a.timestamp)}
@@ -408,15 +518,16 @@ export default function Overview() {
             )}
           </div>
 
-          {/* Right column */}
+          {/* Right column: Safety & Health */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="gg-card" style={{ padding: 22 }}>
-              <p className="gg-label" style={{ marginBottom: 16 }}>One-Way Network Architecture</p>
-              <NetworkTopology />
+              <p className="gg-label" style={{ marginBottom: 16 }}>One-Way Safety & Architecture</p>
+              <NetworkTopology oneWaySafe={stats?.one_way_safe !== false} />
             </div>
             <HealthPanel />
           </div>
         </section>
+
       </div>
 
       {selected && <AlertDrawer alert={selected} onClose={() => setSelected(null)} />}
